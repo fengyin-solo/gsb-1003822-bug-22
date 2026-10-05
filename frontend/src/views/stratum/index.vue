@@ -65,7 +65,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条地层记录记录</span>
-      <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
+      <span v-if="errorMessage" class="error-text" :class="{ conflict: lastConflict }">{{ errorMessage }}</span>
     </footer>
   </section>
 </template>
@@ -79,17 +79,19 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { useSessionStore } from '@/stores/session'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('stratum')
-const columns = ["地层编号", "所属探方", "层位序号", "土质描述", "土色描述", "包含物特征", "记录人", "记录状态"]
+const columns = ["地层编号", "所属探方", "层位序号", "土质描述", "土色描述", "包含物特征", "记录人", "校核人", "校核时间", "记录状态"]
 const actions = ["提交记录", "完成校核", "退回补录"]
 const statuses = ["已划分", "已记录", "已校核", "需补录"]
-const stats = [{"label": "地层总数", "value": 0}, {"label": "已校核层数", "value": 0}, {"label": "待记录层数", "value": 0}]
 
+const session = useSessionStore()
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const lastConflict = ref(false)
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
@@ -98,6 +100,12 @@ const statusSummary = computed(() =>
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+// 指标直接按当前数据计算，刷新后与表格、与实测绘图入口读到的结论保持一致。
+const stats = computed(() => [
+  { label: "地层总数", value: rows.value.length },
+  { label: "已校核层数", value: rows.value.filter((row) => String(row.status) === "已校核").length },
+  { label: "待记录层数", value: rows.value.filter((row) => String(row.status) !== "已校核" && String(row.status) !== "需补录").length },
+])
 
 function resetFilters() {
   filters.value = {}
@@ -114,9 +122,16 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  lastConflict.value = false
+  // 携带页面渲染时的版本号：两人同时校核同一地层时，后完成者会被存储层拒绝。
+  const result = applyAction(meta.key, Number(row.id), action, {
+    operator: session.operator,
+    expectedVersion: Number(row.__version ?? 0),
+  })
   if (!result.ok) {
     errorMessage.value = result.message
+    lastConflict.value = Boolean(result.conflict)
+    reload()
     return
   }
   reload()
@@ -124,6 +139,7 @@ function runAction(action: string, row: EntryRow) {
 
 function reload() {
   errorMessage.value = ''
+  lastConflict.value = false
   try {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items

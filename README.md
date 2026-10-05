@@ -38,6 +38,13 @@ cd frontend
 npm run build
 ```
 
+单元测试（校核事务、跨模块结论一致性、并发冲突、历史记录保护）：
+
+```bash
+cd frontend
+npm test
+```
+
 ## 业务模块
 
 | 模块 | 目录 | 业务对象 | 主要字段 |
