@@ -79,9 +79,11 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { useSessionStore } from '@/stores/session'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('stratum')
+const store = useSessionStore()
 const columns = ["地层编号", "所属探方", "层位序号", "土质描述", "土色描述", "包含物特征", "记录人", "记录状态"]
 const actions = ["提交记录", "完成校核", "退回补录"]
 const statuses = ["已划分", "已记录", "已校核", "需补录"]
@@ -114,9 +116,14 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  const result = applyAction(meta.key, Number(row.id), action, {
+    operator: store.operator,
+    expectedVersion: row.version ?? 0,
+  })
   if (!result.ok) {
     errorMessage.value = result.message
+    // 冲突后以存储中的最新结论为准刷新页面，避免继续拿过期版本发起动作。
+    reload()
     return
   }
   reload()

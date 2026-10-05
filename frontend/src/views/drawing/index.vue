@@ -79,9 +79,11 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { useSessionStore } from '@/stores/session'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('drawing')
+const store = useSessionStore()
 const columns = ["图纸编号", "绘图对象", "绘图类型", "比例尺", "绘图人", "校核人", "完成日期", "图纸状态"]
 const actions = ["提交校核", "确认校核", "退回修改"]
 const statuses = ["绘制中", "待校核", "已校核", "已数字化", "需修改"]
@@ -114,9 +116,14 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  const result = applyAction(meta.key, Number(row.id), action, {
+    operator: store.operator,
+    expectedVersion: row.version ?? 0,
+  })
   if (!result.ok) {
     errorMessage.value = result.message
+    // 冲突后以存储中的最新结论为准刷新页面，避免继续拿过期版本发起动作。
+    reload()
     return
   }
   reload()
